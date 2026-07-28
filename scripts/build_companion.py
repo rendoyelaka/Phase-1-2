@@ -621,7 +621,14 @@ def rebuild_arsc_string_pool(arsc_data, full_path_rename_map):
     new_total = tbl_hdr_size + len(new_sp_chunk) + len(rest)
     new_arsc  = bytearray(data[:tbl_hdr_size])
     struct.pack_into("<I", new_arsc, 4, new_total)
-    return bytes(new_arsc) + new_sp_chunk + rest
+    final = bytearray(bytes(new_arsc) + new_sp_chunk + rest)
+    # CRITICAL: resources.arsc total size must be 4-byte aligned.
+    # Android's ResourceTypes::validate() rejects misaligned tables → no install option shown.
+    # Pad with zero bytes to next 4-byte boundary, then update the root chunk_size field.
+    while len(final) % 4 != 0:
+        final += b'\x00'
+    struct.pack_into("<I", final, 4, len(final))
+    return bytes(final)
 
 
 def step_patch_and_assemble(new_pkg, new_dex, res_rename):
