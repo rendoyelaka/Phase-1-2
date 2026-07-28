@@ -616,15 +616,19 @@ def rebuild_arsc_string_pool(arsc_data, full_path_rename_map):
     struct.pack_into("<I", new_sp_hdr, 20, new_strings_start)
     struct.pack_into("<I", new_sp_hdr, 24, new_styles_start)
 
-    new_sp_chunk = bytes(new_sp_hdr) + new_offsets_bytes + bytes(new_str_data) + style_data
+    new_sp_chunk = bytearray(bytes(new_sp_hdr) + new_offsets_bytes + bytes(new_str_data) + style_data)
+    # CRITICAL FIX 1: StringPool child chunk size must be 4-byte aligned.
+    # Android's ResourceTypes validates every chunk boundary individually.
+    # Pad StringPool with zero bytes then update its own chunk_size field (offset 4).
+    while len(new_sp_chunk) % 4 != 0:
+        new_sp_chunk += b'\x00'
+    struct.pack_into("<I", new_sp_chunk, 4, len(new_sp_chunk))
+
     rest = bytes(data[SP + sp_chunk_size:])
-    new_total = tbl_hdr_size + len(new_sp_chunk) + len(rest)
-    new_arsc  = bytearray(data[:tbl_hdr_size])
-    struct.pack_into("<I", new_arsc, 4, new_total)
-    final = bytearray(bytes(new_arsc) + new_sp_chunk + rest)
-    # CRITICAL: resources.arsc total size must be 4-byte aligned.
-    # Android's ResourceTypes::validate() rejects misaligned tables → no install option shown.
-    # Pad with zero bytes to next 4-byte boundary, then update the root chunk_size field.
+    new_arsc = bytearray(data[:tbl_hdr_size])
+    final = bytearray(bytes(new_arsc) + bytes(new_sp_chunk) + rest)
+    # CRITICAL FIX 2: Root ResTable chunk size must also be 4-byte aligned.
+    # Pad root with zero bytes then update root chunk_size field (offset 4).
     while len(final) % 4 != 0:
         final += b'\x00'
     struct.pack_into("<I", final, 4, len(final))
